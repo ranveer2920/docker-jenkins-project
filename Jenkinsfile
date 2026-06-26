@@ -1,115 +1,73 @@
 pipeline {
-
     agent any
 
     environment {
-
-        IMAGE_NAME="myapp"
-
-        TAG="${BUILD_NUMBER}"
-
-        DEV="ec2-user@13.60.75.167"
-
-        STAGE="ec2-user@13.48.24.176"
-
-        PROD="ec2-user@13.61.14.255"
-
+        IMAGE_NAME = "myapp"
+        CONTAINER_NAME = "myapp-container"
     }
 
     stages {
 
-        stage('Clone') {
-
+        stage('Clone Repository') {
             steps {
-
-                git 'https://github.com/ranveer2920/docker-jenkins-project.git'
-
+                git branch: 'main',
+                    url: 'https://github.com/ranveer2920/docker-jenkins-project.git'
             }
-
         }
 
-        stage('Build Docker Image on Dev') {
-
+        stage('Build Docker Image') {
             steps {
-
-                sh """
-
-                ssh $DEV '
-
-                docker build -t $IMAGE_NAME:$TAG .
-
-                '
-
-                """
-
+                sh '''
+                docker build -t ${IMAGE_NAME}:latest .
+                '''
             }
-
         }
 
-        stage('Run Container on Dev') {
-
+        stage('Stop Old Container') {
             steps {
-
-                sh """
-
-                ssh $DEV '
-
-                docker rm -f app || true
-
-                docker run -d --name app -p 80:80 $IMAGE_NAME:$TAG
-
-                '
-
-                """
-
+                sh '''
+                docker stop ${CONTAINER_NAME} || true
+                docker rm ${CONTAINER_NAME} || true
+                docker rmi ${IMAGE_NAME}:latest || true
+                '''
             }
-
         }
 
-        stage('Deploy Stage') {
-
+        stage('Build New Image') {
             steps {
-
-                sh """
-
-                ssh $STAGE '
-
-                docker build -t $IMAGE_NAME:$TAG .
-
-                docker rm -f app || true
-
-                docker run -d --name app -p 80:80 $IMAGE_NAME:$TAG
-
-                '
-
-                """
-
+                sh '''
+                docker build -t ${IMAGE_NAME}:latest .
+                '''
             }
-
         }
 
-        stage('Deploy Production') {
-
+        stage('Run New Container') {
             steps {
-
-                sh """
-
-                ssh $PROD '
-
-                docker build -t $IMAGE_NAME:$TAG
-
-                docker rm -f app || true
-
-                docker run -d --name app -p 80:80 $IMAGE_NAME:$TAG
-
-                '
-
-                """
-
+                sh '''
+                docker run -d \
+                --name ${CONTAINER_NAME} \
+                -p 80:80 \
+                ${IMAGE_NAME}:latest
+                '''
             }
-
         }
 
+        stage('Verify') {
+            steps {
+                sh '''
+                docker ps
+                docker images
+                '''
+            }
+        }
     }
 
+    post {
+        success {
+            echo "✅ Deployment Successful"
+        }
+        failure {
+            echo "❌ Deployment Failed"
+        }
+    }
 }
